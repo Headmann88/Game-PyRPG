@@ -233,8 +233,23 @@ class Game:
         inventory_surface.fill(BLACK)
         self.screen.blit(inventory_surface, (0, 0))
 
+        # Render player stats
+        stats_text = [
+            f"Health: {self.player.health}/100",
+            f"Level: {self.player.level}",
+            f"EXP: {self.player.exp}/{self.player.exp_next_level}"
+        ]
+        for i, text in enumerate(stats_text):
+            stat_surface = self.small_font.render(text, True, WHITE)
+            self.screen.blit(stat_surface, (20, 20 + i * 30))
+
+        # Inventory title
+        inventory_text = self.font.render("Inventory", True, WHITE)
+        self.screen.blit(inventory_text, (SCREEN_WIDTH // 2 - inventory_text.get_width() // 2, 100))
+
+        # Render inventory grid
         start_x = (SCREEN_WIDTH - (4 * TILE_SIZE + 3 * 10)) // 2
-        start_y = (SCREEN_HEIGHT - (2 * TILE_SIZE + 10)) // 2
+        start_y = 150  # Moved down to make room for stats
 
         for i in range(8):
             x = start_x + (i % 4) * (TILE_SIZE + 10)
@@ -253,9 +268,6 @@ class Game:
                 text_rect = text.get_rect(center=(x + TILE_SIZE // 2, y + TILE_SIZE // 2))
                 self.screen.blit(text, text_rect)
 
-        inventory_text = self.font.render("Inventory", True, WHITE)
-        self.screen.blit(inventory_text, (SCREEN_WIDTH // 2 - inventory_text.get_width() // 2, start_y - 50))
-
         # Display item info
         selected_item = self.player.inventory.items[self.inventory_selected_index]
         if selected_item:
@@ -264,6 +276,10 @@ class Game:
             item_info = "Empty slot"
         info_text = self.small_font.render(item_info, True, WHITE)
         self.screen.blit(info_text, (SCREEN_WIDTH // 2 - info_text.get_width() // 2, start_y + 2 * TILE_SIZE + 2 * 10))
+
+        # Display controls info
+        controls_text = self.small_font.render("Arrow keys to navigate, 'I' to close inventory", True, WHITE)
+        self.screen.blit(controls_text, (SCREEN_WIDTH // 2 - controls_text.get_width() // 2, SCREEN_HEIGHT - 40))
 
     def handle_battle_input(self, event):
         if event.key == pygame.K_UP:
