@@ -64,7 +64,7 @@ class Game:
         self.screen_width = 800
         self.screen_height = 600
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
-        pygame.display.set_caption('PyRPG')
+        pygame.display.set_caption('PyRPG 1.3')
         self.clock = pygame.time.Clock()
         self.tile_width = 32
         self.tile_height = 32
@@ -158,6 +158,22 @@ class Game:
             option_text = font.render(option, True, color)
             self.screen.blit(option_text, (50, 300 + i * 50))
 
+    def try_run_away(self):
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # left, right, up, down
+        random.shuffle(directions)  # Randomize directions to try
+
+        for dx, dy in directions:
+            new_x, new_y = self.player.pos[0] + dx, self.player.pos[1] + dy
+            if self.player.is_valid_move([new_x, new_y], self.game_map):
+                self.player.pos = [new_x, new_y]
+                print("You successfully ran away!")
+                self.in_battle = False
+                self.current_enemy = None
+                return True
+
+        print("You couldn't find a way to escape!")
+        return False
+
     def handle_battle_input(self, event):
         if event.key == pygame.K_UP:
             self.selected_option = (self.selected_option - 1) % len(self.battle_options)
@@ -171,9 +187,9 @@ class Game:
             elif self.battle_options[self.selected_option] == "Defend":
                 print("You defended against the enemy's attack!")
             elif self.battle_options[self.selected_option] == "Run":
-                print("You ran away from the battle!")
-                self.in_battle = False
-                self.current_enemy = None
+                if not self.try_run_away():
+                    # If running away fails, we stay in the battle screen
+                    return
 
             if self.current_enemy and self.current_enemy.health <= 0:
                 print(f"You defeated the {self.current_enemy.name}!")
