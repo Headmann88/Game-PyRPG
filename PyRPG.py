@@ -131,6 +131,7 @@ class Game:
         self.encounter_message_time = 0
         self.player_dead = False
         self.show_inventory = False
+        self.inventory_selected_index = 0
 
     def load_maps(self):
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -238,6 +239,11 @@ class Game:
         for i in range(8):
             x = start_x + (i % 4) * (TILE_SIZE + 10)
             y = start_y + (i // 4) * (TILE_SIZE + 10)
+            
+            # Highlight selected item
+            if i == self.inventory_selected_index:
+                pygame.draw.rect(self.screen, YELLOW, (x - 2, y - 2, TILE_SIZE + 4, TILE_SIZE + 4), 2)
+            
             pygame.draw.rect(self.screen, WHITE, (x, y, TILE_SIZE, TILE_SIZE), 2)
             
             item = self.player.inventory.items[i]
@@ -249,6 +255,15 @@ class Game:
 
         inventory_text = self.font.render("Inventory", True, WHITE)
         self.screen.blit(inventory_text, (SCREEN_WIDTH // 2 - inventory_text.get_width() // 2, start_y - 50))
+
+        # Display item info
+        selected_item = self.player.inventory.items[self.inventory_selected_index]
+        if selected_item:
+            item_info = f"{selected_item.name} - Press 'E' to use, 'D' to discard"
+        else:
+            item_info = "Empty slot"
+        info_text = self.small_font.render(item_info, True, WHITE)
+        self.screen.blit(info_text, (SCREEN_WIDTH // 2 - info_text.get_width() // 2, start_y + 2 * TILE_SIZE + 2 * 10))
 
     def handle_battle_input(self, event):
         if event.key == pygame.K_UP:
@@ -308,6 +323,24 @@ class Game:
             self.player_dead = True
             self.in_battle = False
 
+    def handle_inventory_input(self, event):
+        if event.key == pygame.K_LEFT:
+            self.inventory_selected_index = max(0, self.inventory_selected_index - 1)
+        elif event.key == pygame.K_RIGHT:
+            self.inventory_selected_index = min(7, self.inventory_selected_index + 1)
+        elif event.key == pygame.K_UP:
+            self.inventory_selected_index = max(0, self.inventory_selected_index - 4)
+        elif event.key == pygame.K_DOWN:
+            self.inventory_selected_index = min(7, self.inventory_selected_index + 4)
+        elif event.key == pygame.K_e:
+            selected_item = self.player.inventory.items[self.inventory_selected_index]
+            if selected_item:
+                self.player.use_item(selected_item.name)
+        elif event.key == pygame.K_d:
+            discarded_item = self.player.inventory.remove_item(self.inventory_selected_index)
+            if discarded_item:
+                print(f"Discarded {discarded_item.name}")
+
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -319,15 +352,18 @@ class Game:
                     self.running = False
                 if event.key == pygame.K_i:
                     self.show_inventory = not self.show_inventory
+                    self.inventory_selected_index = 0  # Reset selection when opening/closing inventory
                 if self.game_started:
-                    if self.in_battle:
+                    if self.show_inventory:
+                        self.handle_inventory_input(event)
+                    elif self.in_battle:
                         self.handle_battle_input(event)
                     else:
                         self.handle_movement(event)
                         if event.key == pygame.K_u:
                             self.player.use_item("Health Potion")
 
-        if self.game_started and not self.in_battle:
+        if self.game_started and not self.in_battle and not self.show_inventory:
             self.check_for_encounter()
             self.check_for_map_transition()
 
