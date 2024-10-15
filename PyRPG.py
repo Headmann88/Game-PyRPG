@@ -2,6 +2,9 @@ import pygame
 import sys
 import random
 import time
+import math
+import json
+import os
 
 class Character:
     def __init__(self, pos, health):
@@ -47,6 +50,17 @@ class Enemy(Character):
         direction = random.choice(directions)
         self.move(direction, game_map)
 
+    def seek_player(self, player_pos, game_map):
+        dx = player_pos[0] - self.pos[0]
+        dy = player_pos[1] - self.pos[1]
+        
+        if abs(dx) > abs(dy):
+            direction = 'right' if dx > 0 else 'left'
+        else:
+            direction = 'down' if dy > 0 else 'up'
+        
+        self.move(direction, game_map)
+
 
 class Game:
     def __init__(self):
@@ -58,32 +72,9 @@ class Game:
         self.clock = pygame.time.Clock()
         self.tile_width = 32
         self.tile_height = 32
-        self.maps = [
-            [
-                ['W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W'],
-                ['W', 'P', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-                ['W', 'W', 'W', 'W', 'W', 'W', 'W', 'D', 'W', 'W']
-            ],
-            [
-                ['W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W'],
-                ['W', 'P', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-                ['W', ' ', ' ', ' ', ' ', ' ', ' ', 'W', ' ', 'W'],
-                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-                ['W', ' ', ' ', 'W', ' ', ' ', ' ', ' ', ' ', 'W'],
-                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-                ['W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W']
-            ]
-        ]
+        self.maps = self.load_maps()
         self.current_map_index = 0
-        self.game_map = self.maps[self.current_map_index]
+        self.game_map = self.maps[self.current_map_index]['layout']
         self.player = Player(self.find_player_start())
         self.enemies = self.create_enemies()
         self.running = True
@@ -96,10 +87,35 @@ class Game:
         self.game_started = False
         self.start_screen = self.create_start_screen()
         self.battle_screen = self.create_battle_screen()
+        self.death_screen = self.create_death_screen()
         self.battle_messages = []
         self.max_battle_messages = 5
         self.encounter_message = None
         self.encounter_message_time = 0
+        self.player_dead = False
+
+    def load_maps(self):
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            maps_path = os.path.join(script_dir, 'maps.json')
+            with open(maps_path, 'r') as f:
+                data = json.load(f)
+                maps = data['maps']
+                for map_data in maps:
+                    map_data['layout'] = self.convert_layout_to_2d_list(map_data['layout'])
+                return maps
+        except FileNotFoundError:
+            print(f"Error: maps.json file not found. Looked in: {maps_path}")
+            sys.exit(1)
+        except json.JSONDecodeError:
+            print("Error: Invalid JSON in maps.json file.")
+            sys.exit(1)
+        except KeyError:
+            print("Error: 'maps' key not found in JSON file.")
+            sys.exit(1)
+
+    def convert_layout_to_2d_list(self, layout):
+        return [list(row) for row in layout]
 
     def find_player_start(self):
         for y, row in enumerate(self.game_map):
@@ -175,6 +191,19 @@ class Game:
         battle_screen.fill((0, 0, 0))
         return battle_screen
 
+    def create_death_screen(self):
+        death_screen = pygame.Surface((self.screen_width, self.screen_height))
+        death_screen.fill((0, 0, 0))
+        font_large = pygame.font.Font(None, 72)
+        font_small = pygame.font.Font(None, 36)
+        death_text = font_large.render("You Died", True, (255, 0, 0))
+        restart_text = font_small.render("Press R to restart", True, (255, 255, 255))
+        death_rect = death_text.get_rect(center=(self.screen_width // 2, self.screen_height // 3))
+        restart_rect = restart_text.get_rect(center=(self.screen_width // 2, self.screen_height * 2 // 3))
+        death_screen.blit(death_text, death_rect)
+        death_screen.blit(restart_text, restart_rect)
+        return death_screen
+
     def render_battle_screen(self):
         self.screen.blit(self.create_battle_screen(), (0, 0))
         font = pygame.font.Font(None, 36)
@@ -242,8 +271,26 @@ class Game:
                 damage = random.randint(5, 15)
                 self.current_enemy.health -= damage
                 self.add_battle_message(f"You dealt {damage} damage to {self.current_enemy.name}!")
+                
+                # Enemy attack
+                enemy_damage = random.randint(3, 10)
+                self.player.health -= enemy_damage
+                self.add_battle_message(f"{self.current_enemy.name} dealt {enemy_damage} damage to you!")
+                
+                if self.player.health <= 0:
+                    self.player_dead = True
+                    self.in_battle = False
+                
             elif self.battle_options[self.selected_option] == "Defend":
                 self.add_battle_message("You defended against the enemy's attack!")
+                enemy_damage = random.randint(1, 5)  # Reduced damage when defending
+                self.player.health -= enemy_damage
+                self.add_battle_message(f"{self.current_enemy.name} dealt {enemy_damage} damage to you!")
+                
+                if self.player.health <= 0:
+                    self.player_dead = True
+                    self.in_battle = False
+                
             elif self.battle_options[self.selected_option] == "Run":
                 if self.try_run_away():
                     return  # Return here to prevent further processing if running away
@@ -251,6 +298,7 @@ class Game:
             if self.current_enemy and self.current_enemy.health <= 0:
                 self.add_battle_message(f"You defeated the {self.current_enemy.name}!")
                 self.enemies.remove(self.current_enemy)
+                self.game_map[self.current_enemy.pos[1]][self.current_enemy.pos[0]] = ' '  # Remove enemy from map
                 self.in_battle = False
                 self.current_enemy = None
 
@@ -301,7 +349,7 @@ class Game:
 
     def transition_to_next_map(self):
         self.current_map_index = (self.current_map_index + 1) % len(self.maps)
-        self.game_map = self.maps[self.current_map_index]
+        self.game_map = self.maps[self.current_map_index]['layout']
         self.player.pos = self.find_player_start()
         self.enemies = self.create_enemies()
 
@@ -317,11 +365,27 @@ class Game:
                 self.screen.fill((0, 0, 0))
                 self.render_map()
 
+            if self.player_dead:
+                self.screen.blit(self.death_screen, (0, 0))
+                for event in pygame.event.get():
+                    if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                        self.reset_game()
+
             pygame.display.flip()
             self.clock.tick(60)
 
         pygame.quit()
 
+    def reset_game(self):
+        self.player = Player(self.find_player_start())
+        self.enemies = self.create_enemies()
+        self.player_dead = False
+        self.in_battle = False
+        self.current_enemy = None
+        self.battle_messages = []
+        self.game_started = False
+        self.current_map_index = 0
+        self.game_map = self.maps[self.current_map_index]['layout']
 
 # Initialize and start the game
 if __name__ == '__main__':
