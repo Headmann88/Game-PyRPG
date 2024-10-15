@@ -85,8 +85,11 @@ class Game:
         self.game_started = False
         self.start_screen = self.create_start_screen()
         self.enemy_move_counter = 0
-        self.enemy_move_delay = 3  # Enemy moves every 3 player moves
+        self.enemy_move_delay = 2  # Enemy moves every 2 player moves
         self.in_battle = False
+        self.current_enemy = None
+        self.battle_options = ["Attack", "Defend", "Run"]
+        self.selected_option = 0
         self.battle_screen = self.create_battle_screen()
 
     def find_player_start(self):
@@ -137,11 +140,46 @@ class Game:
     def create_battle_screen(self):
         battle_screen = pygame.Surface((self.screen_width, self.screen_height))
         battle_screen.fill((0, 0, 0))
-        font = pygame.font.Font(None, 48)
-        text = font.render("Battle Screen", True, (255, 255, 255))
-        text_rect = text.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
-        battle_screen.blit(text, text_rect)
         return battle_screen
+
+    def render_battle_screen(self):
+        self.screen.blit(self.create_battle_screen(), (0, 0))
+        font = pygame.font.Font(None, 36)
+        
+        # Render player and enemy
+        player_text = font.render(f"Player (HP: {self.player.health})", True, (255, 255, 255))
+        enemy_text = font.render(f"{self.current_enemy.name} (HP: {self.current_enemy.health})", True, (255, 0, 0))
+        self.screen.blit(player_text, (50, 50))
+        self.screen.blit(enemy_text, (self.screen_width - 250, 50))
+
+        # Render battle options
+        for i, option in enumerate(self.battle_options):
+            color = (255, 255, 0) if i == self.selected_option else (255, 255, 255)
+            option_text = font.render(option, True, color)
+            self.screen.blit(option_text, (50, 300 + i * 50))
+
+    def handle_battle_input(self, event):
+        if event.key == pygame.K_UP:
+            self.selected_option = (self.selected_option - 1) % len(self.battle_options)
+        elif event.key == pygame.K_DOWN:
+            self.selected_option = (self.selected_option + 1) % len(self.battle_options)
+        elif event.key == pygame.K_RETURN:
+            if self.battle_options[self.selected_option] == "Attack":
+                damage = random.randint(5, 15)
+                self.current_enemy.health -= damage
+                print(f"You dealt {damage} damage to {self.current_enemy.name}!")
+            elif self.battle_options[self.selected_option] == "Defend":
+                print("You defended against the enemy's attack!")
+            elif self.battle_options[self.selected_option] == "Run":
+                print("You ran away from the battle!")
+                self.in_battle = False
+                self.current_enemy = None
+
+            if self.current_enemy and self.current_enemy.health <= 0:
+                print(f"You defeated the {self.current_enemy.name}!")
+                self.enemies.remove(self.current_enemy)
+                self.in_battle = False
+                self.current_enemy = None
 
     def handle_events(self):
         for event in pygame.event.get():
@@ -154,8 +192,7 @@ class Game:
                     self.running = False
                 if self.game_started:
                     if self.in_battle:
-                        if event.key == pygame.K_ESCAPE:
-                            self.in_battle = False
+                        self.handle_battle_input(event)
                     else:
                         if event.key in [pygame.K_a, pygame.K_d, pygame.K_w, pygame.K_s]:
                             if event.key == pygame.K_a:
@@ -179,6 +216,8 @@ class Game:
                 if self.player.pos == enemy.pos:
                     print(f"You encountered a {enemy.name}!")
                     self.in_battle = True
+                    self.current_enemy = enemy
+                    self.selected_option = 0
 
     def run(self):
         while self.running:
@@ -187,7 +226,7 @@ class Game:
             if not self.game_started:
                 self.screen.blit(self.start_screen, (0, 0))
             elif self.in_battle:
-                self.screen.blit(self.battle_screen, (0, 0))
+                self.render_battle_screen()
             else:
                 self.screen.fill((0, 0, 0))
                 self.render_map()
