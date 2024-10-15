@@ -3,14 +3,10 @@ import sys
 import random
 import time
 
-class Player:
-    def __init__(self, start_pos):
-        self.pos = list(start_pos)
-        self.health = 100
-        self.inventory = []
-        self.level = 1
-        self.exp = 0
-        self.exp_next_level = 100
+class Character:
+    def __init__(self, pos, health):
+        self.pos = list(pos)
+        self.health = health
 
     def move(self, direction, game_map):
         new_pos = self.pos.copy()
@@ -22,7 +18,7 @@ class Player:
             new_pos[1] -= 1
         elif direction == 'down':
             new_pos[1] += 1
-        
+
         if self.is_valid_move(new_pos, game_map):
             self.pos = new_pos
 
@@ -31,33 +27,26 @@ class Player:
                 0 <= new_pos[1] < len(game_map) and 
                 game_map[new_pos[1]][new_pos[0]] != 'W')
 
-class Enemy:
-    def __init__(self, name, pos):
-        self.name = name
-        self.pos = list(pos)
-        self.health = 20
 
-    def move(self, game_map):
+class Player(Character):
+    def __init__(self, start_pos):
+        super().__init__(start_pos, health=100)
+        self.inventory = []
+        self.level = 1
+        self.exp = 0
+        self.exp_next_level = 100
+
+
+class Enemy(Character):
+    def __init__(self, name, pos):
+        super().__init__(pos, health=20)
+        self.name = name
+
+    def random_move(self, game_map):
         directions = ['left', 'right', 'up', 'down']
         direction = random.choice(directions)
-        new_pos = self.pos.copy()
+        self.move(direction, game_map)
 
-        if direction == 'left':
-            new_pos[0] -= 1
-        elif direction == 'right':
-            new_pos[0] += 1
-        elif direction == 'up':
-            new_pos[1] -= 1
-        elif direction == 'down':
-            new_pos[1] += 1
-        
-        if self.is_valid_move(new_pos, game_map):
-            self.pos = new_pos
-
-    def is_valid_move(self, new_pos, game_map):
-        return (0 <= new_pos[0] < len(game_map[0]) and 
-                0 <= new_pos[1] < len(game_map) and 
-                game_map[new_pos[1]][new_pos[0]] != 'W')
 
 class Game:
     def __init__(self):
@@ -98,14 +87,14 @@ class Game:
         self.player = Player(self.find_player_start())
         self.enemies = self.create_enemies()
         self.running = True
-        self.game_started = False
-        self.start_screen = self.create_start_screen()
         self.enemy_move_counter = 0
-        self.enemy_move_delay = 2  # Enemy moves every 2 player moves
+        self.enemy_move_delay = 2
         self.in_battle = False
         self.current_enemy = None
         self.battle_options = ["Attack", "Defend", "Run"]
         self.selected_option = 0
+        self.game_started = False
+        self.start_screen = self.create_start_screen()
         self.battle_screen = self.create_battle_screen()
         self.battle_messages = []
         self.max_battle_messages = 5
@@ -119,6 +108,55 @@ class Game:
                     return [x, y]
         return [1, 1]  # Default position if 'P' is not found
 
+    def create_enemies(self):
+        enemies = []
+        empty_spaces = []
+
+        # Find all empty spaces on the map
+        for y, row in enumerate(self.game_map):
+            for x, tile in enumerate(row):
+                if tile == ' ':
+                    empty_spaces.append((x, y))
+
+        # If there are empty spaces, spawn one enemy
+        if empty_spaces:
+            enemy_pos = random.choice(empty_spaces)
+            enemy = Enemy("Goblin", enemy_pos)
+            enemies.append(enemy)
+
+        return enemies
+
+    def render_map(self):
+        map_width = len(self.game_map[0]) * self.tile_width
+        map_height = len(self.game_map) * self.tile_height
+        start_x = (self.screen_width - map_width) // 2
+        start_y = (self.screen_height - map_height) // 2
+
+        for y, row in enumerate(self.game_map):
+            for x, tile in enumerate(row):
+                tile_x = start_x + x * self.tile_width
+                tile_y = start_y + y * self.tile_height
+                if tile == 'W':
+                    pygame.draw.rect(self.screen, (128, 128, 128), (tile_x, tile_y, self.tile_width, self.tile_height))
+                elif tile == 'D':
+                    pygame.draw.rect(self.screen, (139, 69, 19), (tile_x, tile_y, self.tile_width, self.tile_height))
+                else:
+                    pygame.draw.rect(self.screen, (0, 0, 0), (tile_x, tile_y, self.tile_width, self.tile_height))
+
+        self.render_player(start_x, start_y)
+        self.render_enemies(start_x, start_y)
+
+    def render_player(self, start_x, start_y):
+        tile_x = start_x + self.player.pos[0] * self.tile_width
+        tile_y = start_y + self.player.pos[1] * self.tile_height
+        pygame.draw.rect(self.screen, (255, 0, 0), (tile_x, tile_y, self.tile_width, self.tile_height))
+
+    def render_enemies(self, start_x, start_y):
+        for enemy in self.enemies:
+            tile_x = start_x + enemy.pos[0] * self.tile_width
+            tile_y = start_y + enemy.pos[1] * self.tile_height
+            pygame.draw.rect(self.screen, (0, 255, 0), (tile_x, tile_y, self.tile_width, self.tile_height))
+
     def create_start_screen(self):
         start_screen = pygame.Surface((self.screen_width, self.screen_height))
         start_screen.fill((0, 0, 0))
@@ -131,33 +169,6 @@ class Game:
         start_screen.blit(title_text, title_rect)
         start_screen.blit(start_text, start_rect)
         return start_screen
-
-    def render_map(self):
-        map_width = len(self.game_map[0]) * self.tile_width
-        map_height = len(self.game_map) * self.tile_height
-        start_x = (self.screen_width - map_width) // 2
-        start_y = (self.screen_height - map_height) // 2
-        
-        for y, row in enumerate(self.game_map):
-            for x, tile in enumerate(row):
-                tile_x = start_x + x * self.tile_width
-                tile_y = start_y + y * self.tile_height
-                if tile == 'W':
-                    pygame.draw.rect(self.screen, (128, 128, 128), (tile_x, tile_y, self.tile_width, self.tile_height))
-                elif tile == 'D':
-                    pygame.draw.rect(self.screen, (139, 69, 19), (tile_x, tile_y, self.tile_width, self.tile_height))
-                else:
-                    pygame.draw.rect(self.screen, (0, 0, 0), (tile_x, tile_y, self.tile_width, self.tile_height))
-                
-                # Render player
-                if [x, y] == self.player.pos:
-                    pygame.draw.rect(self.screen, (255, 0, 0), (tile_x, tile_y, self.tile_width, self.tile_height))
-
-        # Render enemies
-        for enemy in self.enemies:
-            enemy_x = start_x + enemy.pos[0] * self.tile_width
-            enemy_y = start_y + enemy.pos[1] * self.tile_height
-            pygame.draw.rect(self.screen, (0, 255, 0), (enemy_x, enemy_y, self.tile_width, self.tile_height))
 
     def create_battle_screen(self):
         battle_screen = pygame.Surface((self.screen_width, self.screen_height))
@@ -256,21 +267,21 @@ class Game:
                     if self.in_battle:
                         self.handle_battle_input(event)
                     else:
-                        if event.key in [pygame.K_a, pygame.K_d, pygame.K_w, pygame.K_s]:
-                            if event.key == pygame.K_a:
+                        if event.key in [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN]:
+                            if event.key == pygame.K_LEFT:
                                 self.player.move('left', self.game_map)
-                            elif event.key == pygame.K_d:
+                            elif event.key == pygame.K_RIGHT:
                                 self.player.move('right', self.game_map)
-                            elif event.key == pygame.K_w:
+                            elif event.key == pygame.K_UP:
                                 self.player.move('up', self.game_map)
-                            elif event.key == pygame.K_s:
+                            elif event.key == pygame.K_DOWN:
                                 self.player.move('down', self.game_map)
                             
                             self.enemy_move_counter += 1
                             if self.enemy_move_counter >= self.enemy_move_delay:
                                 self.enemy_move_counter = 0
                                 for enemy in self.enemies:
-                                    enemy.move(self.game_map)
+                                    enemy.random_move(self.game_map)
 
         # Check for player-enemy collision
         if self.game_started and not self.in_battle:
@@ -310,27 +321,9 @@ class Game:
             self.clock.tick(60)
 
         pygame.quit()
-        # Remove sys.exit() to prevent quitting the game unexpectedly
-        # sys.exit()
 
-    def create_enemies(self):
-        enemies = []
-        empty_spaces = []
 
-        # Find all empty spaces on the map
-        for y, row in enumerate(self.game_map):
-            for x, tile in enumerate(row):
-                if tile == ' ':
-                    empty_spaces.append((x, y))
-
-        # If there are empty spaces, spawn one enemy
-        if empty_spaces:
-            enemy_pos = random.choice(empty_spaces)
-            enemy = Enemy("Goblin", enemy_pos)
-            enemies.append(enemy)
-
-        return enemies
-
-if __name__ == "__main__":
+# Initialize and start the game
+if __name__ == '__main__':
     game = Game()
     game.run()
