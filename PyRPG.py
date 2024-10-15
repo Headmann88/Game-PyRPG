@@ -135,6 +135,8 @@ class Game:
         self.inventory_selected_index = 0
         self.pickup_message = None
         self.pickup_message_time = 0
+        self.messages = []
+        self.message_duration = 2  # seconds
 
     def load_maps(self):
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -232,6 +234,8 @@ class Game:
             else:
                 self.encounter_message = None
 
+        self.render_messages()
+
     def render_battle_screen(self):
         self.screen.fill(BLACK)
         player_text = self.font.render(f"Player (HP: {self.player.health})", True, WHITE)
@@ -244,6 +248,7 @@ class Game:
             option_text = self.font.render(option, True, color)
             self.screen.blit(option_text, (50, 300 + i * 50))
 
+        # Render battle messages in a chat-like cell
         for i, message in enumerate(self.battle_messages[-5:]):
             message_text = self.small_font.render(message, True, (200, 200, 200))
             self.screen.blit(message_text, (50, SCREEN_HEIGHT - 150 + i * 30))
@@ -330,10 +335,10 @@ class Game:
     def battle_attack(self):
         player_damage = random.randint(5, 15)
         self.current_enemy.health -= player_damage
-        self.battle_messages.append(f"You dealt {player_damage} damage to {self.current_enemy.name}!")
+        self.add_battle_message(f"You dealt {player_damage} damage to {self.current_enemy.name}!")
         
         if self.current_enemy.health <= 0:
-            self.battle_messages.append(f"You defeated the {self.current_enemy.name}!")
+            self.add_battle_message(f"You defeated the {self.current_enemy.name}!")
             self.enemies.remove(self.current_enemy)
             self.game_map[self.current_enemy.pos[1]][self.current_enemy.pos[0]] = ' '
             self.in_battle = False
@@ -342,7 +347,7 @@ class Game:
             self.enemy_attack()
 
     def battle_defend(self):
-        self.battle_messages.append("You defended against the enemy's attack!")
+        self.add_battle_message("You defended against the enemy's attack!")
         self.enemy_attack(damage_reduction=True)
 
     def battle_run(self):
@@ -352,12 +357,11 @@ class Game:
             new_x, new_y = self.player.pos[0] + dx, self.player.pos[1] + dy
             if self.player.is_valid_move([new_x, new_y], self.game_map):
                 self.player.pos = [new_x, new_y]
-                self.encounter_message = "You successfully ran away!"
-                self.encounter_message_time = time.time()
+                self.add_battle_message("You successfully ran away!")
                 self.in_battle = False
                 self.current_enemy = None
                 return
-        self.battle_messages.append("You couldn't find a way to escape!")
+        self.add_battle_message("You couldn't find a way to escape!")
         self.enemy_attack()
 
     def enemy_attack(self, damage_reduction=False):
@@ -365,7 +369,7 @@ class Game:
         if damage_reduction:
             enemy_damage = max(1, enemy_damage // 2)
         self.player.health -= enemy_damage
-        self.battle_messages.append(f"{self.current_enemy.name} dealt {enemy_damage} damage to you!")
+        self.add_battle_message(f"{self.current_enemy.name} dealt {enemy_damage} damage to you!")
         
         if self.player.health <= 0:
             self.player_dead = True
@@ -384,10 +388,11 @@ class Game:
             selected_item = self.player.inventory.items[self.inventory_selected_index]
             if selected_item:
                 self.player.use_item(selected_item.name)
+                self.add_message(f"Used {selected_item.name}")
         elif event.key == pygame.K_d:
             discarded_item = self.player.inventory.remove_item(self.inventory_selected_index)
             if discarded_item:
-                print(f"Discarded {discarded_item.name}")
+                self.add_message(f"Discarded {discarded_item.name}")
 
     def handle_events(self):
         for event in pygame.event.get():
@@ -437,8 +442,7 @@ class Game:
         for enemy in self.enemies:
             enemy_x, enemy_y = enemy.pos
             if abs(player_x - enemy_x) <= 1 and abs(player_y - enemy_y) <= 1:
-                self.encounter_message = f"You encountered a {enemy.name}!"
-                self.encounter_message_time = time.time()
+                self.add_message(f"You encountered a {enemy.name}!")
                 self.in_battle = True
                 self.current_enemy = enemy
                 self.selected_option = 0
@@ -464,11 +468,9 @@ class Game:
                 self.items_on_map[player_pos].pop(0)  # Remove the first item
                 if not self.items_on_map[player_pos]:
                     del self.items_on_map[player_pos]  # Remove the position if no items left
-                self.pickup_message = f"Picked up {item.name}"
-                self.pickup_message_time = time.time()
+                self.add_message(f"Picked up {item.name}")
             else:
-                self.pickup_message = "Inventory is full"
-                self.pickup_message_time = time.time()
+                self.add_message("Inventory is full")
 
     def run(self):
         while self.running:
@@ -518,6 +520,25 @@ class Game:
         self.current_enemy = None
         self.battle_messages = []
         self.game_started = False
+
+    def add_message(self, message):
+        self.messages.append((message, time.time()))
+
+    def add_battle_message(self, message):
+        self.battle_messages.append(message)
+        if len(self.battle_messages) > 5:  # Keep only the last 5 messages
+            self.battle_messages.pop(0)
+
+    def render_messages(self):
+        current_time = time.time()
+        self.messages = [(msg, t) for msg, t in self.messages if current_time - t < self.message_duration]
+        
+        for i, (message, timestamp) in enumerate(self.messages):
+            alpha = int(255 * (1 - (current_time - timestamp) / self.message_duration))
+            message_text = self.font.render(message, True, WHITE)
+            message_text.set_alpha(alpha)
+            text_rect = message_text.get_rect(center=(SCREEN_WIDTH // 2, 100 + i * 40))
+            self.screen.blit(message_text, text_rect)
 
 if __name__ == '__main__':
     game = Game()
