@@ -5,6 +5,7 @@ import time
 import json
 import os
 from collections import defaultdict
+import itertools
 
 # Constants
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
@@ -18,11 +19,12 @@ YELLOW = (255, 255, 0)
 
 # New Item class
 class Item:
-    def __init__(self, name, effect, symbol, color):
+    def __init__(self, name, effect, symbol, color, quantity=1):
         self.name = name
         self.effect = effect
         self.symbol = symbol
         self.color = color
+        self.quantity = quantity
 
     def use(self, character):
         if self.effect == 'heal':
@@ -38,6 +40,10 @@ class Inventory:
         self.size = size
 
     def add_item(self, item):
+        for i, existing_item in enumerate(self.items):
+            if existing_item and existing_item.name == item.name:
+                existing_item.quantity += item.quantity
+                return True
         for i in range(self.size):
             if self.items[i] is None:
                 self.items[i] = item
@@ -92,12 +98,14 @@ class Player(Character):
         self.level = 1
         self.exp = 0
         self.exp_next_level = 100
+        self.speed = 5
 
 # Update Enemy class
 class Enemy(Character):
     def __init__(self, name, pos):
         super().__init__(pos, health=20)
         self.name = name
+        self.speed = random.randint(3, 7)
 
     def random_move(self, game_map):
         direction = random.choice(['left', 'right', 'up', 'down'])
@@ -137,6 +145,11 @@ class Game:
         self.pickup_message_time = 0
         self.messages = []
         self.message_duration = 2  # seconds
+        self.show_action_menu = False
+        self.action_options = ["Use", "Take", "Look around"]
+        self.action_selected_index = 0
+        self.entity_display_index = 0
+        self.last_entity_switch_time = 0
 
     def load_maps(self):
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -186,26 +199,28 @@ class Game:
                 pygame.draw.rect(self.screen, color, 
                                  (start_x + x * TILE_SIZE, start_y + y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
 
-        # Render player
-        pygame.draw.rect(self.screen, RED, 
-                         (start_x + self.player.pos[0] * TILE_SIZE, 
-                          start_y + self.player.pos[1] * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+        # Render entities (player, enemies, items) with loop display
+        current_time = time.time()
+        if current_time - self.last_entity_switch_time > 1:
+            self.entity_display_index += 1
+            self.last_entity_switch_time = current_time
 
-        # Render enemies
-        for enemy in self.enemies:
-            pygame.draw.rect(self.screen, GREEN, 
-                             (start_x + enemy.pos[0] * TILE_SIZE, 
-                              start_y + enemy.pos[1] * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+        for y, row in enumerate(self.game_map):
+            for x, cell in enumerate(row):
+                pos = (x, y)
+                entities = []
+                if self.player.pos == list(pos):
+                    entities.append(('P', RED))
+                entities.extend((enemy.name[0], GREEN) for enemy in self.enemies if enemy.pos == list(pos))
+                entities.extend((item.symbol, item.color) for item in self.items_on_map.get(pos, []))
 
-        # Render items
-        for pos, items in self.items_on_map.items():
-            if items:
-                x, y = pos
-                pygame.draw.rect(self.screen, YELLOW, 
-                                 (start_x + x * TILE_SIZE, 
-                                  start_y + y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
-                if len(items) > 1:
-                    text = self.small_font.render(str(len(items)), True, WHITE)
+                if entities:
+                    entity_index = self.entity_display_index % len(entities)
+                    symbol, color = entities[entity_index]
+                    pygame.draw.rect(self.screen, color, 
+                                     (start_x + x * TILE_SIZE, 
+                                      start_y + y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+                    text = self.small_font.render(symbol, True, WHITE)
                     text_rect = text.get_rect(center=(start_x + x * TILE_SIZE + TILE_SIZE // 2, 
                                                       start_y + y * TILE_SIZE + TILE_SIZE // 2))
                     self.screen.blit(text, text_rect)
@@ -318,6 +333,26 @@ class Game:
         controls_text = self.small_font.render("Arrow keys to navigate, 'I' to close inventory", True, WHITE)
         self.screen.blit(controls_text, (SCREEN_WIDTH // 2 - controls_text.get_width() // 2, SCREEN_HEIGHT - 40))
 
+    def render_action_menu(self):
+        action_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        action_surface.set_alpha(200)
+        action_surface.fill(BLACK)
+        self.screen.blit(action_surface, (0, 0))
+
+        # Render action menu title
+        action_text = self.font.render("Actions", True, WHITE)
+        self.screen.blit(action_text, (SCREEN_WIDTH // 2 - action_text.get_width() // 2, 100))
+
+        # Render action options
+        for i, option in enumerate(self.action_options):
+            color = YELLOW if i == self.action_selected_index else WHITE
+            option_text = self.font.render(option, True, color)
+            self.screen.blit(option_text, (SCREEN_WIDTH // 2 - option_text.get_width() // 2, 200 + i * 50))
+
+        # Display controls info
+        controls_text = self.small_font.render("Arrow keys to navigate, ENTER to select, 'E' to close", True, WHITE)
+        self.screen.blit(controls_text, (SCREEN_WIDTH // 2 - controls_text.get_width() // 2, SCREEN_HEIGHT - 40))
+
     def handle_battle_input(self, event):
         if event.key == pygame.K_UP:
             self.selected_option = (self.selected_option - 1) % len(self.battle_options)
@@ -351,18 +386,22 @@ class Game:
         self.enemy_attack(damage_reduction=True)
 
     def battle_run(self):
-        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-        random.shuffle(directions)
-        for dx, dy in directions:
-            new_x, new_y = self.player.pos[0] + dx, self.player.pos[1] + dy
-            if self.player.is_valid_move([new_x, new_y], self.game_map):
-                self.player.pos = [new_x, new_y]
-                self.add_battle_message("You successfully ran away!")
-                self.in_battle = False
-                self.current_enemy = None
-                return
-        self.add_battle_message("You couldn't find a way to escape!")
-        self.enemy_attack()
+        if self.current_enemy.speed > self.player.speed:
+            self.add_battle_message("You can't run away! The enemy is faster than you.")
+            self.enemy_attack()
+        else:
+            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+            random.shuffle(directions)
+            for dx, dy in directions:
+                new_x, new_y = self.player.pos[0] + dx, self.player.pos[1] + dy
+                if self.player.is_valid_move([new_x, new_y], self.game_map):
+                    self.player.pos = [new_x, new_y]
+                    self.add_battle_message("You successfully ran away!")
+                    self.in_battle = False
+                    self.current_enemy = None
+                    return
+            self.add_battle_message("You couldn't find a way to escape!")
+            self.enemy_attack()
 
     def enemy_attack(self, damage_reduction=False):
         enemy_damage = random.randint(3, 10)
@@ -394,6 +433,49 @@ class Game:
             if discarded_item:
                 self.add_message(f"Discarded {discarded_item.name}")
 
+    def handle_action_menu_input(self, event):
+        if event.key == pygame.K_UP:
+            self.action_selected_index = (self.action_selected_index - 1) % len(self.action_options)
+        elif event.key == pygame.K_DOWN:
+            self.action_selected_index = (self.action_selected_index + 1) % len(self.action_options)
+        elif event.key == pygame.K_RETURN:
+            action = self.action_options[self.action_selected_index]
+            if action == "Use":
+                self.show_inventory = True
+                self.show_action_menu = False
+            elif action == "Take":
+                self.take_item()
+            elif action == "Look around":
+                self.look_around()
+            self.show_action_menu = False
+
+    def take_item(self):
+        player_pos = tuple(self.player.pos)
+        if player_pos in self.items_on_map and self.items_on_map[player_pos]:
+            item = self.items_on_map[player_pos][0]
+            if self.player.inventory.add_item(item):
+                self.items_on_map[player_pos].pop(0)
+                if not self.items_on_map[player_pos]:
+                    del self.items_on_map[player_pos]
+                self.add_message(f"Picked up {item.name}")
+            else:
+                self.add_message("Inventory is full")
+
+    def look_around(self):
+        player_pos = tuple(self.player.pos)
+        items = self.items_on_map.get(player_pos, [])
+        enemies = [enemy for enemy in self.enemies if tuple(enemy.pos) == player_pos]
+        
+        if not items and not enemies:
+            self.add_message("There's nothing interesting here.")
+        else:
+            if items:
+                item_names = ", ".join(f"{item.name} (x{item.quantity})" for item in items)
+                self.add_message(f"Items here: {item_names}")
+            if enemies:
+                enemy_names = ", ".join(enemy.name for enemy in enemies)
+                self.add_message(f"Enemies here: {enemy_names}")
+
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -406,33 +488,35 @@ class Game:
                 if event.key == pygame.K_i:
                     self.show_inventory = not self.show_inventory
                     self.inventory_selected_index = 0  # Reset selection when opening/closing inventory
+                if event.key == pygame.K_e:
+                    self.show_action_menu = not self.show_action_menu
+                    self.action_selected_index = 0
                 if self.game_started:
                     if self.show_inventory:
                         self.handle_inventory_input(event)
+                    elif self.show_action_menu:
+                        self.handle_action_menu_input(event)
                     elif self.in_battle:
                         self.handle_battle_input(event)
                     else:
                         self.handle_movement(event)
-                        if event.key == pygame.K_u:
-                            self.player.use_item("Health Potion")
 
-        if self.game_started and not self.in_battle and not self.show_inventory:
+        if self.game_started and not self.in_battle and not self.show_inventory and not self.show_action_menu:
             self.check_for_encounter()
             self.check_for_map_transition()
 
     def handle_movement(self, event):
         direction = {
-            pygame.K_LEFT: 'left',
-            pygame.K_RIGHT: 'right',
-            pygame.K_UP: 'up',
-            pygame.K_DOWN: 'down'
+            pygame.K_a: 'left',
+            pygame.K_d: 'right',
+            pygame.K_w: 'up',
+            pygame.K_s: 'down'
         }.get(event.key)
         
         if direction:
             old_pos = self.player.pos.copy()
             self.player.move(direction, self.game_map)
             if self.player.pos != old_pos:  # Only check for encounters if the player actually moved
-                self.check_for_item_pickup()
                 self.check_for_encounter()
             for enemy in self.enemies:
                 enemy.random_move(self.game_map)
@@ -460,18 +544,6 @@ class Game:
         self.enemies = self.create_enemies()
         self.load_items()
 
-    def check_for_item_pickup(self):
-        player_pos = tuple(self.player.pos)
-        if player_pos in self.items_on_map and self.items_on_map[player_pos]:
-            item = self.items_on_map[player_pos][0]  # Get the first item
-            if self.player.inventory.add_item(item):
-                self.items_on_map[player_pos].pop(0)  # Remove the first item
-                if not self.items_on_map[player_pos]:
-                    del self.items_on_map[player_pos]  # Remove the position if no items left
-                self.add_message(f"Picked up {item.name}")
-            else:
-                self.add_message("Inventory is full")
-
     def run(self):
         while self.running:
             self.handle_events()
@@ -487,6 +559,8 @@ class Game:
                 self.render_map()
                 if self.show_inventory:
                     self.render_inventory()
+                elif self.show_action_menu:
+                    self.render_action_menu()
 
             pygame.display.flip()
             self.clock.tick(FPS)
