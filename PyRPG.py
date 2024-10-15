@@ -84,6 +84,10 @@ class Game:
         self.running = True
         self.game_started = False
         self.start_screen = self.create_start_screen()
+        self.enemy_move_counter = 0
+        self.enemy_move_delay = 3  # Enemy moves every 3 player moves
+        self.in_battle = False
+        self.battle_screen = self.create_battle_screen()
 
     def find_player_start(self):
         for y, row in enumerate(self.game_map):
@@ -130,6 +134,15 @@ class Game:
             enemy_y = start_y + enemy.pos[1] * self.tile_height
             pygame.draw.rect(self.screen, (0, 255, 0), (enemy_x, enemy_y, self.tile_width, self.tile_height))
 
+    def create_battle_screen(self):
+        battle_screen = pygame.Surface((self.screen_width, self.screen_height))
+        battle_screen.fill((0, 0, 0))
+        font = pygame.font.Font(None, 48)
+        text = font.render("Battle Screen", True, (255, 255, 255))
+        text_rect = text.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+        battle_screen.blit(text, text_rect)
+        return battle_screen
+
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -140,24 +153,32 @@ class Game:
                 if event.key == pygame.K_q:
                     self.running = False
                 if self.game_started:
-                    if event.key == pygame.K_a:
-                        self.player.move('left', self.game_map)
-                    elif event.key == pygame.K_d:
-                        self.player.move('right', self.game_map)
-                    elif event.key == pygame.K_w:
-                        self.player.move('up', self.game_map)
-                    elif event.key == pygame.K_s:
-                        self.player.move('down', self.game_map)
-
-        # Move enemies
-        for enemy in self.enemies:
-            enemy.move(self.game_map)
+                    if self.in_battle:
+                        if event.key == pygame.K_ESCAPE:
+                            self.in_battle = False
+                    else:
+                        if event.key in [pygame.K_a, pygame.K_d, pygame.K_w, pygame.K_s]:
+                            if event.key == pygame.K_a:
+                                self.player.move('left', self.game_map)
+                            elif event.key == pygame.K_d:
+                                self.player.move('right', self.game_map)
+                            elif event.key == pygame.K_w:
+                                self.player.move('up', self.game_map)
+                            elif event.key == pygame.K_s:
+                                self.player.move('down', self.game_map)
+                            
+                            self.enemy_move_counter += 1
+                            if self.enemy_move_counter >= self.enemy_move_delay:
+                                self.enemy_move_counter = 0
+                                for enemy in self.enemies:
+                                    enemy.move(self.game_map)
 
         # Check for player-enemy collision
-        for enemy in self.enemies:
-            if self.player.pos == enemy.pos:
-                print(f"You encountered a {enemy.name}!")
-                # Here you could implement combat or other interactions
+        if self.game_started and not self.in_battle:
+            for enemy in self.enemies:
+                if self.player.pos == enemy.pos:
+                    print(f"You encountered a {enemy.name}!")
+                    self.in_battle = True
 
     def run(self):
         while self.running:
@@ -165,6 +186,8 @@ class Game:
             
             if not self.game_started:
                 self.screen.blit(self.start_screen, (0, 0))
+            elif self.in_battle:
+                self.screen.blit(self.battle_screen, (0, 0))
             else:
                 self.screen.fill((0, 0, 0))
                 self.render_map()
