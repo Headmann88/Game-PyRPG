@@ -102,14 +102,35 @@ class Player(Character):
 
 # Update Enemy class
 class Enemy(Character):
-    def __init__(self, name, pos):
-        super().__init__(pos, health=20)
+    def __init__(self, name, pos, health, speed, damage_range):
+        super().__init__(pos, health)
         self.name = name
-        self.speed = random.randint(3, 7)
+        self.speed = speed
+        self.damage_range = damage_range
+
+    def attack(self):
+        return random.randint(*self.damage_range)
 
     def random_move(self, game_map):
         direction = random.choice(['left', 'right', 'up', 'down'])
         self.move(direction, game_map)
+
+# Create specific enemy types
+class Goblin(Enemy):
+    def __init__(self, pos):
+        super().__init__("Goblin", pos, health=20, speed=4, damage_range=(2, 6))
+
+class Orc(Enemy):
+    def __init__(self, pos):
+        super().__init__("Orc", pos, health=35, speed=3, damage_range=(4, 8))
+
+class Skeleton(Enemy):
+    def __init__(self, pos):
+        super().__init__("Skeleton", pos, health=15, speed=5, damage_range=(3, 7))
+
+class Dragon(Enemy):
+    def __init__(self, pos):
+        super().__init__("Dragon", pos, health=100, speed=7, damage_range=(10, 20))
 
 # Update Game class
 class Game:
@@ -172,9 +193,18 @@ class Game:
         return [1, 1]  # Default position if 'P' is not found
 
     def create_enemies(self):
-        return [Enemy("Goblin", (x, y)) 
-                for y, row in enumerate(self.game_map) 
-                for x, cell in enumerate(row) if cell == 'g']
+        enemies = []
+        for y, row in enumerate(self.game_map):
+            for x, cell in enumerate(row):
+                if cell == 'g':
+                    enemies.append(Goblin((x, y)))
+                elif cell == 'o':
+                    enemies.append(Orc((x, y)))
+                elif cell == 's':
+                    enemies.append(Skeleton((x, y)))
+                elif cell == 'd':
+                    enemies.append(Dragon((x, y)))
+        return enemies
 
     def load_items(self):
         for y, row in enumerate(self.game_map):
@@ -404,7 +434,7 @@ class Game:
             self.enemy_attack()
 
     def enemy_attack(self, damage_reduction=False):
-        enemy_damage = random.randint(3, 10)
+        enemy_damage = self.current_enemy.attack()
         if damage_reduction:
             enemy_damage = max(1, enemy_damage // 2)
         self.player.health -= enemy_damage
