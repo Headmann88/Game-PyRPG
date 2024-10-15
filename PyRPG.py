@@ -69,17 +69,32 @@ class Game:
         self.clock = pygame.time.Clock()
         self.tile_width = 32
         self.tile_height = 32
-        self.game_map = [
-            ['W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W'],
-            ['W', 'P', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-            ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-            ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-            ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-            ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-            ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-            ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
-            ['W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W']
+        self.maps = [
+            [
+                ['W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W'],
+                ['W', 'P', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
+                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
+                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
+                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
+                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
+                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
+                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
+                ['W', 'W', 'W', 'W', 'W', 'W', 'W', 'D', 'W', 'W']
+            ],
+            [
+                ['W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W'],
+                ['W', 'P', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
+                ['W', ' ', ' ', ' ', ' ', ' ', ' ', 'W', ' ', 'W'],
+                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
+                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
+                ['W', ' ', ' ', 'W', ' ', ' ', ' ', ' ', ' ', 'W'],
+                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
+                ['W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'W'],
+                ['W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W']
+            ]
         ]
+        self.current_map_index = 0
+        self.game_map = self.maps[self.current_map_index]
         self.player = Player(self.find_player_start())
         self.enemies = self.create_enemies()
         self.running = True
@@ -129,6 +144,8 @@ class Game:
                 tile_y = start_y + y * self.tile_height
                 if tile == 'W':
                     pygame.draw.rect(self.screen, (128, 128, 128), (tile_x, tile_y, self.tile_width, self.tile_height))
+                elif tile == 'D':
+                    pygame.draw.rect(self.screen, (139, 69, 19), (tile_x, tile_y, self.tile_width, self.tile_height))
                 else:
                     pygame.draw.rect(self.screen, (0, 0, 0), (tile_x, tile_y, self.tile_width, self.tile_height))
                 
@@ -264,6 +281,18 @@ class Game:
                     self.in_battle = True
                     self.current_enemy = enemy
                     self.selected_option = 0
+
+        # Check for map transition
+        if self.game_started and not self.in_battle:
+            x, y = self.player.pos
+            if self.game_map[y][x] == 'D':
+                self.transition_to_next_map()
+
+    def transition_to_next_map(self):
+        self.current_map_index = (self.current_map_index + 1) % len(self.maps)
+        self.game_map = self.maps[self.current_map_index]
+        self.player.pos = self.find_player_start()
+        self.enemies = self.create_enemies()
 
     def run(self):
         while self.running:
