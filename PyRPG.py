@@ -4,6 +4,7 @@ import random
 import time
 import json
 import os
+from collections import defaultdict
 
 # Constants
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
@@ -115,7 +116,7 @@ class Game:
         self.maps = self.load_maps()
         self.current_map_index = 0
         self.game_map = self.maps[self.current_map_index]['layout']
-        self.items_on_map = []
+        self.items_on_map = defaultdict(list)
         self.load_items()
         self.player = Player(self.find_player_start())
         self.enemies = self.create_enemies()
@@ -132,6 +133,8 @@ class Game:
         self.player_dead = False
         self.show_inventory = False
         self.inventory_selected_index = 0
+        self.pickup_message = None
+        self.pickup_message_time = 0
 
     def load_maps(self):
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -159,12 +162,11 @@ class Game:
                 for x, cell in enumerate(row) if cell == 'g']
 
     def load_items(self):
-        self.items_on_map = []
         for y, row in enumerate(self.game_map):
             for x, cell in enumerate(row):
                 if cell == 'H':
                     item = Item("Health Potion", "heal", 'H', RED)
-                    self.items_on_map.append((item, (x, y)))
+                    self.items_on_map[(x, y)].append(item)
                     self.game_map[y][x] = ' '
 
     def render_map(self):
@@ -194,11 +196,41 @@ class Game:
                               start_y + enemy.pos[1] * TILE_SIZE, TILE_SIZE, TILE_SIZE))
 
         # Render items
-        for item, pos in self.items_on_map:
-            x, y = pos
-            pygame.draw.rect(self.screen, item.color, 
-                             (start_x + x * TILE_SIZE, 
-                              start_y + y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+        for pos, items in self.items_on_map.items():
+            if items:
+                x, y = pos
+                pygame.draw.rect(self.screen, YELLOW, 
+                                 (start_x + x * TILE_SIZE, 
+                                  start_y + y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+                if len(items) > 1:
+                    text = self.small_font.render(str(len(items)), True, WHITE)
+                    text_rect = text.get_rect(center=(start_x + x * TILE_SIZE + TILE_SIZE // 2, 
+                                                      start_y + y * TILE_SIZE + TILE_SIZE // 2))
+                    self.screen.blit(text, text_rect)
+
+        # Render pickup message
+        if self.pickup_message:
+            current_time = time.time()
+            if current_time - self.pickup_message_time < 2:
+                alpha = int(255 * (1 - (current_time - self.pickup_message_time) / 2))
+                pickup_text = self.font.render(self.pickup_message, True, WHITE)
+                pickup_text.set_alpha(alpha)
+                text_rect = pickup_text.get_rect(center=(SCREEN_WIDTH // 2, 100))
+                self.screen.blit(pickup_text, text_rect)
+            else:
+                self.pickup_message = None
+
+        # Render encounter message
+        if self.encounter_message:
+            current_time = time.time()
+            if current_time - self.encounter_message_time < 2:
+                alpha = int(255 * (1 - (current_time - self.encounter_message_time) / 2))
+                encounter_text = self.font.render(self.encounter_message, True, WHITE)
+                encounter_text.set_alpha(alpha)
+                text_rect = encounter_text.get_rect(center=(SCREEN_WIDTH // 2, 100))
+                self.screen.blit(encounter_text, text_rect)
+            else:
+                self.encounter_message = None
 
     def render_battle_screen(self):
         self.screen.fill(BLACK)
@@ -392,14 +424,19 @@ class Game:
         }.get(event.key)
         
         if direction:
+            old_pos = self.player.pos.copy()
             self.player.move(direction, self.game_map)
-            self.check_for_item_pickup()
+            if self.player.pos != old_pos:  # Only check for encounters if the player actually moved
+                self.check_for_item_pickup()
+                self.check_for_encounter()
             for enemy in self.enemies:
                 enemy.random_move(self.game_map)
 
     def check_for_encounter(self):
+        player_x, player_y = self.player.pos
         for enemy in self.enemies:
-            if self.player.pos == enemy.pos:
+            enemy_x, enemy_y = enemy.pos
+            if abs(player_x - enemy_x) <= 1 and abs(player_y - enemy_y) <= 1:
                 self.encounter_message = f"You encountered a {enemy.name}!"
                 self.encounter_message_time = time.time()
                 self.in_battle = True
@@ -420,13 +457,18 @@ class Game:
         self.load_items()
 
     def check_for_item_pickup(self):
-        for item, pos in self.items_on_map[:]:
-            if tuple(self.player.pos) == pos:
-                if self.player.inventory.add_item(item):
-                    self.items_on_map.remove((item, pos))
-                    print(f"Picked up {item.name}")
-                else:
-                    print("Inventory is full")
+        player_pos = tuple(self.player.pos)
+        if player_pos in self.items_on_map and self.items_on_map[player_pos]:
+            item = self.items_on_map[player_pos][0]  # Get the first item
+            if self.player.inventory.add_item(item):
+                self.items_on_map[player_pos].pop(0)  # Remove the first item
+                if not self.items_on_map[player_pos]:
+                    del self.items_on_map[player_pos]  # Remove the position if no items left
+                self.pickup_message = f"Picked up {item.name}"
+                self.pickup_message_time = time.time()
+            else:
+                self.pickup_message = "Inventory is full"
+                self.pickup_message_time = time.time()
 
     def run(self):
         while self.running:
