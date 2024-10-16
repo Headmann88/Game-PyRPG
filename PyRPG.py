@@ -168,10 +168,12 @@ class Game:
         self.messages = []
         self.message_duration = 2  # seconds
         self.show_action_menu = False
-        self.action_options = ["Use", "Take", "Look around"]
+        self.action_options = ["Use", "Take", "Look around", "Remember"]
         self.action_selected_index = 0
         self.entity_display_index = 0
         self.last_entity_switch_time = 0
+        self.show_battle_log = False
+        self.battle_log = []  # Store all battle messages here
 
     def load_maps(self):
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -384,6 +386,24 @@ class Game:
         controls_text = self.small_font.render("Arrow keys to navigate, ENTER to select, 'E' to close", True, WHITE)
         self.screen.blit(controls_text, (SCREEN_WIDTH // 2 - controls_text.get_width() // 2, SCREEN_HEIGHT - 40))
 
+    def render_battle_log(self):
+        log_surface = pygame.Surface((SCREEN_WIDTH - 100, SCREEN_HEIGHT - 100))
+        log_surface.fill(BLACK)
+        pygame.draw.rect(log_surface, WHITE, log_surface.get_rect(), 2)
+        pygame.draw.rect(log_surface, YELLOW, log_surface.get_rect().inflate(-4, -4), 2)
+
+        title = self.font.render("Battle Log", True, WHITE)
+        log_surface.blit(title, (20, 20))
+
+        for i, message in enumerate(self.battle_log[-15:]):  # Show last 15 messages
+            text = self.small_font.render(message, True, WHITE)
+            log_surface.blit(text, (20, 60 + i * 30))
+
+        close_text = self.small_font.render("Press ESC to close", True, WHITE)
+        log_surface.blit(close_text, (20, log_surface.get_height() - 30))
+
+        self.screen.blit(log_surface, (50, 50))
+
     def handle_battle_input(self, event):
         if event.key == pygame.K_UP:
             self.selected_option = (self.selected_option - 1) % len(self.battle_options)
@@ -477,6 +497,8 @@ class Game:
                 self.take_item()
             elif action == "Look around":
                 self.look_around()
+            elif action == "Remember":
+                self.show_battle_log = True
             self.show_action_menu = False
 
     def use_object(self):
@@ -550,10 +572,10 @@ class Game:
                     self.game_started = True
                 if event.key == pygame.K_q:
                     self.running = False
-                if event.key == pygame.K_i:
+                if event.key == pygame.K_i and not self.show_action_menu:
                     self.show_inventory = not self.show_inventory
-                    self.inventory_selected_index = 0  # Reset selection when opening/closing inventory
-                if event.key == pygame.K_e:
+                    self.inventory_selected_index = 0
+                if event.key == pygame.K_e and not self.show_inventory:
                     self.show_action_menu = not self.show_action_menu
                     self.action_selected_index = 0
                 if self.game_started:
@@ -561,6 +583,9 @@ class Game:
                         self.handle_inventory_input(event)
                     elif self.show_action_menu:
                         self.handle_action_menu_input(event)
+                    elif self.show_battle_log:
+                        if event.key == pygame.K_ESCAPE:
+                            self.show_battle_log = False
                     elif self.in_battle:
                         self.handle_battle_input(event)
                     else:
@@ -618,6 +643,8 @@ class Game:
                     self.render_inventory()
                 elif self.show_action_menu:
                     self.render_action_menu()
+                elif self.show_battle_log:
+                    self.render_battle_log()
 
             pygame.display.flip()
             self.clock.tick(FPS)
@@ -657,7 +684,8 @@ class Game:
 
     def add_battle_message(self, message):
         self.battle_messages.append(message)
-        if len(self.battle_messages) > 5:  # Keep only the last 5 messages
+        self.battle_log.append(message)  # Add to the persistent battle log
+        if len(self.battle_messages) > 5:
             self.battle_messages.pop(0)
 
     def render_messages(self):
