@@ -80,7 +80,8 @@ class Character:
         x, y = new_pos
         return (0 <= x < len(game_map[0]) and 
                 0 <= y < len(game_map) and 
-                game_map[y][x] != 'W')
+                game_map[y][x] != 'W' and
+                game_map[y][x] != 'D')  # Add 'D' to collision check
 
     def use_item(self, item_name):
         item = self.inventory.get_item_by_name(item_name)
@@ -471,13 +472,47 @@ class Game:
         elif event.key == pygame.K_RETURN:
             action = self.action_options[self.action_selected_index]
             if action == "Use":
-                self.show_inventory = True
-                self.show_action_menu = False
+                self.use_object()
             elif action == "Take":
                 self.take_item()
             elif action == "Look around":
                 self.look_around()
             self.show_action_menu = False
+
+    def use_object(self):
+        player_x, player_y = self.player.pos
+        adjacent_cells = [
+            (player_x - 1, player_y),
+            (player_x + 1, player_y),
+            (player_x, player_y - 1),
+            (player_x, player_y + 1)
+        ]
+
+        for x, y in adjacent_cells:
+            if 0 <= x < len(self.game_map[0]) and 0 <= y < len(self.game_map):
+                cell = self.game_map[y][x]
+                if cell == 'D':
+                    self.add_message("You opened the door.")
+                    self.transition_to_next_map()
+                    return
+                elif cell == 'B':  # 'B' for button
+                    self.add_message("You pressed the button.")
+                    # Add button functionality here
+                    return
+                elif cell == 'S':  # 'S' for switch
+                    self.add_message("You flipped the switch.")
+                    # Add switch functionality here
+                    return
+
+        self.add_message("There's nothing to use here.")
+
+    def transition_to_next_map(self):
+        self.current_map_index = (self.current_map_index + 1) % len(self.maps)
+        self.game_map = self.maps[self.current_map_index]['layout']
+        self.player.pos = self.find_player_start()
+        self.enemies = self.create_enemies()
+        self.load_items()
+        self.add_message("You entered a new area.")
 
     def take_item(self):
         player_pos = tuple(self.player.pos)
@@ -563,16 +598,8 @@ class Game:
                 break
 
     def check_for_map_transition(self):
-        x, y = self.player.pos
-        if self.game_map[y][x] == 'D':
-            self.transition_to_next_map()
-
-    def transition_to_next_map(self):
-        self.current_map_index = (self.current_map_index + 1) % len(self.maps)
-        self.game_map = self.maps[self.current_map_index]['layout']
-        self.player.pos = self.find_player_start()
-        self.enemies = self.create_enemies()
-        self.load_items()
+        # Remove this method or leave it empty
+        pass
 
     def run(self):
         while self.running:
