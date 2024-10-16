@@ -395,12 +395,19 @@ class Game:
         title = self.font.render("Battle Log", True, WHITE)
         log_surface.blit(title, (20, 20))
 
-        for i, message in enumerate(self.battle_log[-15:]):  # Show last 15 messages
+        # Calculate available space for messages
+        available_height = log_surface.get_height() - 120  # 60 for top margin, 60 for bottom margin
+        max_messages = available_height // 30  # 30 is the height of each message line
+
+        # Get the last 'max_messages' entries from the battle log
+        displayed_messages = self.battle_log[-max_messages:]
+
+        for i, message in enumerate(displayed_messages):
             text = self.small_font.render(message, True, WHITE)
             log_surface.blit(text, (20, 60 + i * 30))
 
         close_text = self.small_font.render("Press ESC to close", True, WHITE)
-        log_surface.blit(close_text, (20, log_surface.get_height() - 30))
+        log_surface.blit(close_text, (20, log_surface.get_height() - 40))
 
         self.screen.blit(log_surface, (50, 50))
 
