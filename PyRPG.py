@@ -572,10 +572,10 @@ class Game:
                     self.game_started = True
                 if event.key == pygame.K_q:
                     self.running = False
-                if event.key == pygame.K_i and not self.show_action_menu:
+                if event.key == pygame.K_i and not self.show_action_menu and not self.show_battle_log:
                     self.show_inventory = not self.show_inventory
                     self.inventory_selected_index = 0
-                if event.key == pygame.K_e and not self.show_inventory:
+                if event.key == pygame.K_e and not self.show_inventory and not self.show_battle_log:
                     self.show_action_menu = not self.show_action_menu
                     self.action_selected_index = 0
                 if self.game_started:
@@ -591,7 +591,7 @@ class Game:
                     else:
                         self.handle_movement(event)
 
-        if self.game_started and not self.in_battle and not self.show_inventory and not self.show_action_menu:
+        if self.game_started and not self.in_battle and not self.show_inventory and not self.show_action_menu and not self.show_battle_log:
             self.check_for_encounter()
             self.check_for_map_transition()
 
